@@ -1,18 +1,20 @@
-ARG GOVERSION=1.26
-ARG GOARCH
-FROM golang:${GOVERSION} AS builder
-ARG GOARCH
-ENV GOARCH=${GOARCH}
-WORKDIR /go/src/k8s.io/kube-state-metrics/
-COPY . /go/src/k8s.io/kube-state-metrics/
+# Build stage
+FROM golang:1.26 AS builder
 
-RUN make build-local
+WORKDIR /app
 
-FROM gcr.io/distroless/static-debian13:latest-${GOARCH}
-COPY --from=builder /go/src/k8s.io/kube-state-metrics/kube-state-metrics /
+COPY go.mod go.sum ./
+RUN go mod download
 
-USER nobody
+COPY . .
 
-ENTRYPOINT ["/kube-state-metrics", "--port=8080", "--telemetry-port=8081"]
+RUN CGO_ENABLED=0 go build -o /kube-state-metrics .
+
+# Runtime stage
+FROM gcr.io/distroless/static-debian13:nonroot
+
+COPY --from=builder /kube-state-metrics /kube-state-metrics
 
 EXPOSE 8080 8081
+
+ENTRYPOINT ["/kube-state-metrics", "--port=8080", "--telemetry-port=8081"]
